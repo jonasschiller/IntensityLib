@@ -387,6 +387,12 @@ def get_price_data(country: str, start: pd.Timestamp, end: pd.Timestamp) -> pd.D
     end_year=end.year
     years=np.arange(start_year,end_year+1)
     data=None
+    if country== "DE":
+        country="DE_LU"
+    elif country=="IT":
+        country="IT_CNOR"
+    elif country=="SE":
+        country="SE_3"
     for year in years:
         filename = os.path.join(CACHE_DIR, "Price\\Price_" + country + "_" + str(year) + ".csv")
         # Check if the file exists at all
@@ -401,7 +407,7 @@ def get_price_data(country: str, start: pd.Timestamp, end: pd.Timestamp) -> pd.D
             data=data_helper
         else:
             data=pd.concat([data.iloc[:-1],data_helper],axis=0)
-    return data[start:end]
+    return pd.DataFrame(data[start:end])
 
 # Helper function for non-included countries where API does not have the correct neighbours
 countryCodes=["AT","PT","ES","FR","IT","GR","ME","BG","RO","RS","HU","SK","SI","CZ","BE","NL","EE","LV","LT","FI","NO","SE","DK","PL","DE","IE","UK"]

@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import psychrolib as psy
+import helper.entsoe_wrapper as entsoe
 
 import os
 
@@ -27,22 +28,24 @@ def get_water_op():
 def get_water_lca():
     pass
 
-
-def get_average_intensity(data, factors,country):
-    data.drop(columns=[col for col in data.columns if 'Consumption' in col], inplace=True)
-    data.columns=data.columns.str.split("_").str[0]
-    data_share = data.div(data.sum(axis=1), axis=0)
-    return (data_share*factors[country]).sum(axis=1)
+def get_average_intensity(country: str,start: pd.Timestamp,end: pd.Timestamp,water=True) -> pd.Series:
+    if water==True:
+        factors=get_water_op()
+    else:
+        factors=get_emission_op()
+    generation = entsoe.get_generation_data_1h(country,start,end)
+    generation.drop(columns=[col for col in generation.columns if 'Consumption' in col], inplace=True)
+    generation.columns=generation.columns.str.split("_").str[0]
+    generation_share = generation.div(generation.sum(axis=1), axis=0)
+    return (generation_share*factors[country]).sum(axis=1)
 
 def load_weather_data(country):
-    data=pd.read_csv("Data\Weather\Wea_"+country+"_2022.csv",index_col=1)
+    data=pd.read_csv("C:\\Daten\\Foschung\\RiskAware\\Data\\Weather\Wea_"+country+"_2022.csv",index_col=1)
     data=data.loc[:,["tmpf","relh","alti"]]
     data.replace("M",np.nan,inplace=True)
     data=data.astype(float)
     #Interpolate missing values as mean of the previous and next value
     data=data.interpolate(method="linear",axis=0)
-     # Check for NaNs after interpolation
-    print("After interpolation:\n", data.isna().sum())
     data.loc[:,"alti"]=data.loc[:,"alti"]*33.8639*100
     data.loc[:,"tmpc"]=(data.loc[:,"tmpf"]-32)*5/9
     data.loc[:,"relh"]=(data.loc[:,"relh"])/100
@@ -69,9 +72,26 @@ def load_direct_WUE(country, wCycle = 6):
     # 
     temp_data=load_weather_data(country)
     wetBulbTemp=getWetBulpTemperature(temp_data)
+    wetBulbTempFahrenheit = wetBulbTemp * 9/5 + 32
     
-    directWue = wCycle/(wCycle-1)*(6e-5* wetBulbTemp**3 - 0.01 * wetBulbTemp**2 + 0.61 * wetBulbTemp - 10.4);
+    directWue = wCycle/(wCycle-1)*(6e-5* wetBulbTempFahrenheit**3 - 0.01 * wetBulbTempFahrenheit**2 + 0.61 * wetBulbTempFahrenheit - 10.4);
     
     # Even though when the temperature is low, we still need 
     # a little bit water for moisture, e.g. 0.05
     return np.clip(directWue, 0.05, None)
+
+def load_direct_WUE_2(country):
+    temp_data=load_weather_data(country)
+    wetBulbTemp=getWetBulpTemperature(temp_data)
+    directWue = -0.0006143 * wetBulbTemp**2 + 0.03386 * wetBulbTemp +1.24
+    return np.clip(directWue, 0.05, None)
+
+def get_complete_WUE(country: str,start: pd.Timestamp,end: pd.Timestamp) -> pd.Series:
+    direct=load_direct_WUE(country)
+    indirect=get_average_intensity(country,start,end,water=True)
+    direct.index=direct.index.tz_localize('UTC')
+    indirect.index=indirect.index.tz_convert('UTC')
+    direct=direct.loc[start:end] 
+    indirect=indirect.loc[start:end]
+    complete=direct+indirect
+    return complete
