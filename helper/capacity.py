@@ -20,9 +20,16 @@ def get_remaining_capacity_per_generation_type(country: str, start: pd.Timestamp
     remaining_capa=pd.DataFrame(index=missing_capa.index, columns=missing_capa.columns)
     
     for i,year in enumerate(range(start_year, end_year + 1)):
-        yearly_installed_capa = installed_capa.loc[installed_capa.index.year == year].iloc[i]
+        yearly_installed_capa = installed_capa.loc[installed_capa.index == year]
         yearly_missing_capa = missing_capa.loc[missing_capa.index.year == year]
-        remaining_capa.loc[yearly_missing_capa.index] = yearly_installed_capa - yearly_missing_capa
+        yearly_missing_capa = yearly_missing_capa.reindex(columns=installed_capa.columns, fill_value=0)
+        yearly_remaining_capa = -yearly_missing_capa.subtract(yearly_installed_capa.iloc[0], axis=1)
+        remaining_capa.loc[yearly_missing_capa.index] = yearly_remaining_capa
+    #drop all columns with all nan or 0
+    remaining_capa=remaining_capa.dropna(axis=1, how='all')
+    remaining_capa=remaining_capa.loc[:, (remaining_capa != 0).any(axis=0)]
+    #drop all where column has a value below 0
+    remaining_capa=remaining_capa.loc[:, (remaining_capa >= 0).all(axis=0)]
     return remaining_capa
 
 def get_usage_percentage_per_generation_type(country: str, start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
@@ -46,9 +53,11 @@ def get_usage_percentage_variable_generation(country: str, start: pd.Timestamp, 
     
     # Clean up column names
     generation.columns = generation.columns.str.replace('_Actual Aggregated', '')
+    if country =='IE':
+        generation=generation.ffill()
     
     remaining_capa=get_remaining_capacity_per_generation_type(country=country, start=start, end=end)
-    remaining_capa = remaining_capa.reindex(columns=generation.columns, fill_value=0)
+    generation=generation.reindex(columns=remaining_capa.columns, fill_value=0)
 
     #Calculate the usage percentage of all variable generation units
     units=['Biomass','Fossil Brown coal/Lignite','Fossil Coal-derived gas','Fossil Gas','Fossil Hard coal','Fossil Oil','Fossil Oil shale','Fossil Peat','Hydro Pumped Storage','Hydro Water Reservoir','Nuclear','Other','Waste']

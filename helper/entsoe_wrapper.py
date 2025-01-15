@@ -338,8 +338,10 @@ def get_outages(country: str,start: pd.Timestamp, end: pd.Timestamp) -> pd.DataF
             data_helper.reset_index(drop=True, inplace=True)
             data_helper = data_helper[data_helper['docstatus'] != 'Cancelled']
             # Ensure 'start' column is in datetime format and round to hourly resolution
-            data_helper['start'] = pd.to_datetime(data_helper['start']).dt.round('h', ambiguous='NaT')
-            data_helper['end'] = pd.to_datetime(data_helper['end']).dt.round('h', ambiguous='NaT')
+            data_helper['start'] = pd.to_datetime(data_helper['start']).dt.round('h', ambiguous='NaT',nonexistent='shift_forward')
+            data_helper['start'] = data_helper['start'].dt.tz_convert('UTC')
+            data_helper['end'] = pd.to_datetime(data_helper['end']).dt.round('h', ambiguous='NaT',nonexistent='shift_forward')
+            data_helper['end'] = data_helper['end'].dt.tz_convert('UTC')
             # Convert 'avail_qty' column to float
             data_helper['avail_qty'] = data_helper['avail_qty'].astype(float)
             data_helper.to_csv(filename, index=True)
@@ -393,6 +395,8 @@ def get_price_data(country: str, start: pd.Timestamp, end: pd.Timestamp) -> pd.D
         country="IT_CNOR"
     elif country=="SE":
         country="SE_3"
+    elif country=="IE":
+        country="IE_SEM"
     for year in years:
         filename = os.path.join(CACHE_DIR, "Price\\Price_" + country + "_" + str(year) + ".csv")
         # Check if the file exists at all
