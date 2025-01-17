@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import psychrolib as psy
 import helper.entsoe_wrapper as entsoe
+import helper.flowtracing as ft
 
 import os
 
@@ -36,6 +37,20 @@ def get_average_intensity(country: str,start: pd.Timestamp,end: pd.Timestamp,wat
     generation = entsoe.get_generation_data_1h(country,start,end)
     generation.drop(columns=[col for col in generation.columns if 'Consumption' in col], inplace=True)
     generation.columns=generation.columns.str.split("_").str[0]
+    generation_share = generation.div(generation.sum(axis=1), axis=0)
+    return (generation_share*factors[country]).sum(axis=1)
+
+def get_average_flexible_intensity(country: str,start: pd.Timestamp,end: pd.Timestamp,water=True) -> pd.Series:
+    if water==True:
+        factors=get_water_op()
+    else:
+        factors=get_emission_op()
+    generation = entsoe.get_generation_data_1h(country,start,end)
+    generation.drop(columns=[col for col in generation.columns if 'Consumption' in col], inplace=True)
+    generation.columns=generation.columns.str.split("_").str[0]
+    generation = generation.drop(columns=generation.columns.intersection([
+    'Other renewable', 'Solar', 'Waste', 'Wind Offshore', 'Wind Onshore'
+    ]))
     generation_share = generation.div(generation.sum(axis=1), axis=0)
     return (generation_share*factors[country]).sum(axis=1)
 
@@ -95,3 +110,14 @@ def get_complete_WUE(country: str,start: pd.Timestamp,end: pd.Timestamp) -> pd.S
     indirect=indirect.loc[start:end]
     complete=direct+indirect
     return complete
+
+def get_average_intensity_flow(country: str,start: pd.Timestamp,end: pd.Timestamp,water=True) -> pd.Series:
+    if water==True:
+        factors=get_water_op()
+    else:
+        factors=get_emission_op()
+    generation = ft.get_generation_flowtrace(country,start,end)
+    generation.drop(columns=[col for col in generation.columns if 'Consumption' in col], inplace=True)
+    generation.columns=generation.columns.str.split("_").str[0]
+    generation_share = generation.div(generation.sum(axis=1), axis=0)
+    return (generation_share*factors[country]).sum(axis=1)

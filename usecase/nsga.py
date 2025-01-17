@@ -49,10 +49,10 @@ def feasible(individual):
     for i in range(num_ins):
         for j in range(N):
             if np.sum(x_masked[N*j:N*j+N, i]) > max_cap:
-                return False
+                return 11
             if np.sum(x_masked[j::N, i]) != workload_trace[j, i]:
-                return [False]
-    return [True]
+                return 1
+    return -1
 
 # Define the problem
 class ResourceAllocationProblem(ElementwiseProblem):
