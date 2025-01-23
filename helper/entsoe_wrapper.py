@@ -411,6 +411,14 @@ def get_price_data(country: str, start: pd.Timestamp, end: pd.Timestamp) -> pd.D
             data=data_helper
         else:
             data=pd.concat([data.iloc[:-1],data_helper],axis=0)
+        # check if timesteps are missing and fill with data from the previous day
+    if country=="IE_SEM":
+        date_range = pd.date_range(start, end, freq='1h')
+        missing_dates = date_range.difference(data.index)
+        data_frame=pd.DataFrame(data,index=date_range,columns=data.columns)
+        for missing_date in missing_dates:
+            data_frame.loc[missing_date] = data_frame.loc[missing_date - pd.Timedelta(hours=48)]
+        return data_frame[start:end]
     return pd.DataFrame(data[start:end])
 
 # Helper function for non-included countries where API does not have the correct neighbours

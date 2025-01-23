@@ -3,6 +3,7 @@ import numpy as np
 import psychrolib as psy
 import helper.entsoe_wrapper as entsoe
 import helper.flowtracing as ft
+import helper.drought as drought
 
 import os
 
@@ -29,7 +30,7 @@ def get_water_op():
 def get_water_lca():
     pass
 
-def get_average_intensity(country: str,start: pd.Timestamp,end: pd.Timestamp,water=True) -> pd.Series:
+def get_average_intensity(country: str,start: pd.Timestamp,end: pd.Timestamp,water=True,weighted=True) -> pd.Series:
     if water==True:
         factors=get_water_op()
     else:
@@ -38,7 +39,11 @@ def get_average_intensity(country: str,start: pd.Timestamp,end: pd.Timestamp,wat
     generation.drop(columns=[col for col in generation.columns if 'Consumption' in col], inplace=True)
     generation.columns=generation.columns.str.split("_").str[0]
     generation_share = generation.div(generation.sum(axis=1), axis=0)
-    return (generation_share*factors[country]).sum(axis=1)
+    emissions=(generation_share*factors[country]).sum(axis=1)
+    if weighted==True and water==True:
+        weight=drought.load_water_weight(country)
+        return emissions*weight
+    return emissions
 
 def get_average_flexible_intensity(country: str,start: pd.Timestamp,end: pd.Timestamp,water=True) -> pd.Series:
     if water==True:
@@ -95,23 +100,23 @@ def load_direct_WUE(country, wCycle = 6):
     # a little bit water for moisture, e.g. 0.05
     return np.clip(directWue, 0.05, None)
 
-def load_direct_WUE_2(country):
-    temp_data=load_weather_data(country)
-    wetBulbTemp=getWetBulpTemperature(temp_data)
-    directWue = -0.0006143 * wetBulbTemp**2 + 0.03386 * wetBulbTemp +1.24
-    return np.clip(directWue, 0.05, None)
-
-def get_complete_WUE(country: str,start: pd.Timestamp,end: pd.Timestamp) -> pd.Series:
+def get_complete_WUE(country: str,start: pd.Timestamp,end: pd.Timestamp,flow=True,weighted=True) -> pd.Series:
     direct=load_direct_WUE(country)
-    indirect=get_average_intensity(country,start,end,water=True)
+    if flow==True:
+        indirect=get_average_intensity_flow(country,start,end,water=True,weighted=False)
+    else:
+        indirect=get_average_intensity(country,start,end,water=True,weighted=False)
     direct.index=direct.index.tz_localize('UTC')
     indirect.index=indirect.index.tz_convert('UTC')
     direct=direct.loc[start:end] 
     indirect=indirect.loc[start:end]
     complete=direct+indirect
+    if weighted==True:
+        weight=drought.load_water_weight(country)
+        return complete*weight
     return complete
 
-def get_average_intensity_flow(country: str,start: pd.Timestamp,end: pd.Timestamp,water=True) -> pd.Series:
+def get_average_intensity_flow(country: str,start: pd.Timestamp,end: pd.Timestamp,water=True,weighted=False) -> pd.Series:
     if water==True:
         factors=get_water_op()
     else:
@@ -120,4 +125,8 @@ def get_average_intensity_flow(country: str,start: pd.Timestamp,end: pd.Timestam
     generation.drop(columns=[col for col in generation.columns if 'Consumption' in col], inplace=True)
     generation.columns=generation.columns.str.split("_").str[0]
     generation_share = generation.div(generation.sum(axis=1), axis=0)
-    return (generation_share*factors[country]).sum(axis=1)
+    emissions=(generation_share*factors[country]).sum(axis=1)
+    if weighted==True and water==True:
+        weight=drought.load_water_weight(country)
+        return emissions*weight
+    return emissions

@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 
 
-def extend_workload(df):
+def extend_workload(df,timesteps=8760):
     df['Weekend']=df.index.weekday.isin([5,6])
     # Separate the data into weekdays and weekends
     weekday_data = df[df['Weekend'] == False]
@@ -26,4 +26,4 @@ def extend_workload(df):
     # Reset the index to have a continuous date range
     extended_data.index = pd.date_range(start='2022-01-01', periods=365*24, freq='h')
 
-    return extended_data
+    return extended_data.iloc[:timesteps]

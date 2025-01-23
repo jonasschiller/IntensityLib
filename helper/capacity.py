@@ -2,11 +2,8 @@ import pandas as pd
 import helper.entsoe_wrapper as entsoe_wrapper
 import numpy as np
 from entsoe import EntsoePandasClient
+import os
 
-
-"""
-To do is a yearly differentiation between the installed capacity
-"""
 
 def get_remaining_capacity_per_generation_type(country: str, start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
     #exception for Germany since only the combined zone DE_LU has data for missing capacity
@@ -46,7 +43,7 @@ def get_usage_percentage_per_generation_type(country: str, start: pd.Timestamp, 
     usage_percentage.replace(np.nan, 0, inplace=True)
     return usage_percentage
 
-def get_usage_percentage_variable_generation(country: str, start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
+def calc_usage_percentage_variable_generation(country: str, start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
     generation=entsoe_wrapper.get_generation_data_1h(country=country, start=start, end=end)
     # Drop columns containing 'Consumption' in their name
     generation.drop(columns=[col for col in generation.columns if 'Consumption' in col], inplace=True)
@@ -66,6 +63,30 @@ def get_usage_percentage_variable_generation(country: str, start: pd.Timestamp, 
     variable_gen=generation[units_intersect].sum(axis=1)
     variable_gen_usage_percentage=1-(variable_gen_capa-variable_gen)/variable_gen_capa
     return variable_gen_usage_percentage
+
+
+def get_usage_percentage_variable_generation(country: str, start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
+    start_year=start.year
+    end_year=end.year
+    years=np.arange(start_year,end_year+1)
+    data=None
+
+    #Potentially requires special treatment of countries with changes in accounting
+    for year in years:
+        filename = os.path.join(entsoe_wrapper.CACHE_DIR, "Capacity\\Var_Capa_" + country + "_" + str(year) + ".csv")
+        # Check if the file exists at all
+        if os.path.exists(filename):
+            data_helper= pd.read_csv(filename,index_col=0,parse_dates=True)
+        else:
+            data_helper = calc_usage_percentage_variable_generation(country, start=pd.Timestamp(str(year) + "-01-01",tz="UTC"), end=pd.Timestamp(str(year) + "-12-31 23:00",tz="UTC"))
+            
+            data_helper.to_csv(filename, index=True)
+        if data is None:
+            data=data_helper
+        else:
+            data = pd.concat([data[:-1], data_helper], axis=0)
+    data.index = pd.to_datetime(data.index,utc=True)
+    return data[start:end]
 
     
 def get_missing_capacity_percentage_per_generation_type(country: str, start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
