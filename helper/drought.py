@@ -9,6 +9,7 @@ import requests
 import ast
 import os
 import helper.entsoe_wrapper as entsoe
+countries=["AT","PT","ES","FR","IT","GR","ME","BG","RO","RS","HU","SK","SI","CZ","BE","NL","EE","LV","LT","FI","NO","SE","DK","PL","DE","IE","UK"]
 
 def get_drought_indicator(year):
     path=entsoe.CACHE_DIR+'\Drought\drought_'+str(year)+'.nc'
@@ -53,7 +54,7 @@ def convert_drought_indicator(year):
 
     df['country'] = get_country(coords)
 
-    #df=df[df['country'].isin(datacenter_loc.keys())]
+    df=df[df['country'].isin(countries)]
     df['cdi'] = df.apply(lambda row: dataset.sel(lon=row['lon'], lat=row['lat'])['cdinx'].isel(band=0).values.astype(np.int8), axis=1)
     df.to_csv(entsoe.CACHE_DIR+'\Drought\drought_geolocated_'+str(year)+'.csv')
     return df
