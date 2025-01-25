@@ -13,7 +13,7 @@ import os
 import numpy as np
 
 # Define a global variable for the cache directory
-CACHE_DIR = "C:\\Daten\\Foschung\\RiskAware\\Data"
+CACHE_DIR = "C:\Daten\Foschung\RiskAware\IntensityLib\Data"
 # Entsoe API key
 API_KEY="96ebcf8b-a543-4309-b167-322d5e0d5684"
 client=EntsoePandasClient(api_key=API_KEY)

@@ -1,20 +1,40 @@
 import xarray as xr
 import reverse_geocoder as rg
-from tqdm import tqdm
-import pandas as pd
 import itertools
-import os
 import numpy as np
 import pandas as pd
 from scipy.spatial import distance
-import matplotlib.pyplot as plt
 
-datacenter_loc={"DE":(50.110924,8.682127),"FR":(48.856667,2.351667),"IE":(53.35,-6.26),"IT":(45.4625,9.1864),
-                "NL":(52.3702,4.8904),"PL":(52.2167,21.0333),"ES":(40.412,-3.7039),
-                "SE":(59.325,18.05),"BE":(50.8466,4.3517),"AT":(48.2083,16.3731)}
+import requests
+import ast
+import os
+import helper.entsoe_wrapper as entsoe
 
-def convert_drought_indicator(path='C:\Daten\Foschung\RiskAware\Code\Data\Drought\drought_indicator.nc', save_name="drought_geolocated"):
+def get_drought_indicator(year):
+    path=entsoe.CACHE_DIR+'\Drought\drought_'+str(year)+'.nc'
+    if not os.path.exists(path):
+        download_drought_indicator(year)
+        return convert_drought_indicator(year)
+    else:
+        return convert_drought_indicator(year)
+
+def download_drought_indicator(year):
+ # Send out request to CDI
+    url="https://drought.emergency.copernicus.eu/services/getData2download?format=nc&scale_id=edo&action=getUrls&year="+str(year)+"&prod_code=cdiad"
+    response = requests.get(url)
+    download_link = response.text.strip()
+
+    # Extract the URL from the string
+    formatted_url = ast.literal_eval(download_link)[0].replace('\\/', '/')
+
+    # Download the file from the extracted link
+    file_response = requests.get(formatted_url)
+    with open(entsoe.CACHE_DIR+"\\Drought\\drought_"+str(year)+".nc", 'wb') as f:
+        f.write(file_response.content)
+
+def convert_drought_indicator(year):
 # Load the NetCDF file
+    path=entsoe.CACHE_DIR+'\Drought\drought_'+str(year)+'.nc'
     dataset = xr.open_dataset(path)
 
     # Create a DataFrame with every combination of lon and lat
@@ -33,48 +53,51 @@ def convert_drought_indicator(path='C:\Daten\Foschung\RiskAware\Code\Data\Drough
 
     df['country'] = get_country(coords)
 
-    df=df[df['country'].isin(datacenter_loc.keys())]
+    #df=df[df['country'].isin(datacenter_loc.keys())]
     df['cdi'] = df.apply(lambda row: dataset.sel(lon=row['lon'], lat=row['lat'])['cdinx'].isel(band=0).values.astype(np.int8), axis=1)
-    df.to_csv(save_name)
+    df.to_csv(entsoe.CACHE_DIR+'\Drought\drought_geolocated_'+str(year)+'.csv')
     return df
 
-def load_drought_indicator(raw_path='C:\Daten\Foschung\RiskAware\Code\Data\Drought\drought_indicator.nc', geo_path='C:\Daten\Foschung\RiskAware\Code\Data\Drought\drought_geolocated.csv'):
-    if os.path.exists(geo_path):
-        df= pd.read_csv(geo_path,index_col=0)
+def load_drought_indicator(year):
+    path=entsoe.CACHE_DIR+'\Drought\drought_geolocated_'+str(year)+'.csv'
+    if os.path.exists(path):
+        df= pd.read_csv(path,index_col=0)
     else:
-        df= convert_drought_indicator(raw_path, geo_path)
+        df= get_drought_indicator(year)
     df.reset_index(drop=True, inplace=True)
     df['cdi'] = df['cdi'].apply(lambda x: np.fromstring(x[1:-1], sep=' ',dtype=np.int8))
     df = df[df['cdi'].apply(lambda x: not np.all(x == np.int8(8)))]
     return df
 
-def  calculate_risk(geo_path='C:\Daten\Foschung\RiskAware\Code\Data\Drought\drought_geolocated.csv',p=2,datacenter_loc=datacenter_loc,countries=datacenter_loc.keys()):
-    df=load_drought_indicator(geo_path=geo_path)
-    if type(countries)==str:
-        countries=[countries]
-    risk=pd.DataFrame(index=pd.date_range(start='2022-01-01', end='2022-12-31', freq='10D')[:-1], columns=countries)
-    for country in countries:
+def calculate_risk(country,loc,start,end,p=2):
+    
+    risk=None
+    for year in range(start.year,end.year+1):
         # Filter for Germany
+        df=load_drought_indicator(year)
         df_country = df[df['country'] == country].copy()
         # Build the drought data for Germany
         df_country['cdi'] = df_country['cdi'].apply(lambda x: np.where(x == 6, 1, np.where(x == 5, 2, np.where(x == 4, 3, x))))
 
         # Calculate distances and weights
-        df_country['distance'] = df_country.apply(lambda row: distance.euclidean((row['lat'], row['lon']), (datacenter_loc[country][0],datacenter_loc[country][1])), axis=1)
+        df_country['distance'] = df_country.apply(lambda row: distance.euclidean((row['lat'], row['lon']), (loc[0],loc[1])), axis=1)
         df_country['weight'] = np.pow(1 / df_country['distance'],1)
         df_country['weight'] /= df_country['weight'].sum()
 
         # Calculate weighted drought risk
-        risk_country = [np.sum(df_country['cdi'].apply(lambda x: x[i]) * df_country['weight']) for i in range(len(df_country['cdi'].iloc[0]))]
+        risk_helper = [np.sum(df_country['cdi'].apply(lambda x: x[i]) * df_country['weight']) for i in range(len(df_country['cdi'].iloc[0]))]
+        if year==start.year:
+            risk=risk_helper
+        else:
+            risk=np.vstack((risk,risk_helper))
+    
+    return pd.DataFrame(risk_helper,index=pd.date_range(start=start, end=end, freq='10D')[:-1], columns=[country])
 
-        risk[country] = risk_country
-
-    return risk
 
 def load_weip(countries):
     # Load the data
-    weip_22 = pd.read_csv(r"C:\\Daten\\Foschung\\RiskAware\\Data\\Weather\\waterscarcity2022.csv")
-    weip = pd.read_csv(r"C:\\Daten\\Foschung\\RiskAware\\Data\\Weather\\waterscarcity.csv")
+    weip_22 = pd.read_csv(entsoe.CACHE_DIR+"\\Weather\\waterscarcity2022.csv")
+    weip = pd.read_csv(entsoe.CACHE_DIR+"\\Weather\\waterscarcity.csv")
 
     # Drop unnecessary columns
     weip_22.drop(columns=['unit_label', 'dimension_label', 'eu_sdg', 'dimension', 'unit', 'geo_label', 'obs_status'], inplace=True)
@@ -96,12 +119,11 @@ def load_weip(countries):
     return result
 
 
-def load_water_weight(countries,p=2):
-    risk=calculate_risk(p=2,countries=countries)
-    weip=load_weip(countries)
-    water_weight=risk[countries]*weip
+def load_water_weight(country,loc,start,end,p=2):
+    risk=calculate_risk(country,loc,start,end,p=2,)
+    weip=load_weip(country)
+    water_weight=risk*weip
     water_weight= water_weight.resample('1h').ffill()
-    water_weight = water_weight.resample('1h').ffill().reindex(pd.date_range(start=water_weight.index[0], end='2023-01-01 00:00:00', freq='1h'), method='ffill')
-    water_weight.index=water_weight.index.tz_localize('UTC')
+    water_weight = water_weight.resample('1h').ffill().reindex(pd.date_range(start=start, end=end, freq='1h'), method='ffill')
     return water_weight
 

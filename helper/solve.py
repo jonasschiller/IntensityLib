@@ -1,5 +1,4 @@
 import numpy as np 
-import cvxpy as cp
 import gurobipy as gp
 
 def offline_solver_gurobi(price_all_loc, water_all_loc, carbon_all_loc, workload_trace, timesteps, l_0 = 1, l_1 = 100, l_2 = 100, max_cap = 1, verbose=True, f_type="AVG"):
